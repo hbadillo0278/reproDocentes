@@ -1,0 +1,37 @@
+import fitz  # PyMuPDF
+import difflib
+
+def extract_text(pdf_path):
+    """Extrae el texto de un PDF y lo devuelve como una lista numerada de líneas."""
+    doc = fitz.open(pdf_path)
+    return [line for page in doc for line in page.get_text("text").splitlines()]
+
+def comparar_textos(texto_anterior, texto_nuevo):
+    """Compara dos listas de texto y devuelve diferencias con número de línea."""
+    diff = list(difflib.ndiff(texto_anterior, texto_nuevo))
+    agregado = [(i+1, line[2:]) for i, line in enumerate(diff) if line.startswith("+ ")]
+    eliminado = [(i+1, line[2:]) for i, line in enumerate(diff) if line.startswith("- ")]
+
+    return agregado, eliminado
+
+# 📂 Ruta de los archivos PDF
+pdf_anterior = "lineamientos2024.pdf"
+pdf_nuevo = "lineamientos2025.pdf"
+
+# 📜 Extraer textos
+texto_anterior = extract_text(pdf_anterior)
+texto_nuevo = extract_text(pdf_nuevo)
+
+# 🔍 Comparar documentos
+agregado, eliminado = comparar_textos(texto_anterior, texto_nuevo)
+
+# 💾 Guardar resultados con número de línea
+with open("cambios_agregados.txt", "w", encoding="utf-8") as f:
+    for linea, texto in agregado:
+        f.write(f"Línea {linea}: {texto}\n")
+
+with open("cambios_eliminados.txt", "w", encoding="utf-8") as f:
+    for linea, texto in eliminado:
+        f.write(f"Línea {linea}: {texto}\n")
+
+print("✅ Comparación completada. Revisa 'cambios_agregados.txt' y 'cambios_eliminados.txt'.")
