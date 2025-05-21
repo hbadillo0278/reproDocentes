@@ -68,7 +68,7 @@ if opcion == "No Competentes":
 
     ax.set_xlabel("Total de Estudiantes NO Competentes - % de No Competencia")
     ax.set_ylabel("Docentes")
-    ax.set_title(f"Docentes con más estudiantes NO Competentes - Semana {semana_seleccionada}")
+    ax.set_title(f"Cantidad y porcentaje de estudiantes reprobados por los 15 docentes con mayor número de reprobaciones - Semana {semana_seleccionada}")
     st.pyplot(fig)
 
     # 📊 Ranking de Módulos con más estudiantes NO Competentes - TOP 15
@@ -89,7 +89,7 @@ if opcion == "No Competentes":
 
     ax.set_xlabel("Total de Estudiantes NO Competentes - % de No Competencia")
     ax.set_ylabel("Módulo")
-    ax.set_title(f"Módulos con más estudiantes NO Competentes - Semana {semana_seleccionada}")
+    ax.set_title(f"Cantidad y porcentaje de estudiantes reprobados en los 15 módulos con mayor número de reprobaciones - Semana {semana_seleccionada}")
     st.pyplot(fig)
 
 ### 📊 OPCIÓN 2: COMPORTAMIENTO SEMANAL DE DOCENTES
