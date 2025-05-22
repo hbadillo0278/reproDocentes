@@ -1,0 +1,8 @@
+git init  # Inicializa el repositorio
+git remote add origin https://github.com/tu-usuario/dashboard-academico.git  # Vincula el repositorio remoto
+git add .  # Agrega todos los archivos al área de preparación
+git commit -m "Subida inicial del dashboard"
+git push -u origin main  # Envía los archivos a GitHub
+
+git remote remove origin
+git remote add origin https://github.com/hbadillo0278/dashboard-academico.git  # Usa la URL correcta de tu repo

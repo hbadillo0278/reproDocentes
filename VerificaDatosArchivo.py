@@ -1,9 +1,18 @@
 import streamlit as st
 import polars as pl
 import matplotlib.pyplot as plt
-
 # Configuración de la página con fuente Montserrat y fondo institucional
 st.set_page_config(layout="wide", page_title="Dashboard de Competencias Académicas", page_icon="📊")
+hide_streamlit_style = """
+    <style>
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    </style>
+"""
+st.markdown(hide_streamlit_style, unsafe_allow_html=True)
+
+
 
 # Estilos para imagen de fondo y fuente
 st.markdown("""
