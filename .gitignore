@@ -1,0 +1,4 @@
+*.xlsb
+*.pdf
+venv/
+requirements_hbs.txt
