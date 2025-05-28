@@ -5,16 +5,16 @@ import matplotlib.pyplot as plt
 import numpy as np
 import io
 
-st.set_page_config(layout="wide", page_title="Dashboard de Competencias Académicas", page_icon="📊")
-# Ocultar barra superior y menú en Streamlit
 st.markdown("""
     <style>
-        #MainMenu {visibility: hidden;}
-        header {visibility: hidden;}
-        footer {visibility: hidden;}
+        #MainMenu {display: none !important;}
+        header {display: none !important;}
+        footer {display: none !important;}
+        button[title="View fullscreen"] {display: none !important;}
+        button[title="View source"] {display: none !important;}
+        button[title="Report a bug"] {display: none !important;}
     </style>
 """, unsafe_allow_html=True)
-
 @st.cache_data(ttl=600)
 def cargar_datos():
     try:
