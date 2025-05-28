@@ -1,41 +1,25 @@
 import streamlit as st
+import pandas as pd
 import polars as pl
 import matplotlib.pyplot as plt
-# Configuración de la página con fuente Montserrat y fondo institucional
+import numpy as np
+import io
+
 st.set_page_config(layout="wide", page_title="Dashboard de Competencias Académicas", page_icon="📊")
-hide_streamlit_style = """
-    <style>
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
-    </style>
-"""
-st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
-# Estilos para imagen de fondo y fuente
-st.markdown("""
-    <style>
-    .block-container {
-        background-image: url('D:/Tutorial/colibri_gem.png'); /* Ruta local de la imagen del colibrí */
-        background-size: cover;
-        background-position: center;
-        font-family: 'Montserrat', sans-serif;
-        font-size: 11px;
-        color: white;
-        padding: 20px;
-    }
-    </style>
-""", unsafe_allow_html=True)
-
-# Mostrar logotipo de CONALEP Estado de México
-st.image("LogotipoConalep.png", width=650)  # Ruta local del logotipo
-
-# Cargar datos con caching
 @st.cache_data(ttl=600)
 def cargar_datos():
     try:
-        df = pl.read_csv("Datos.csv", separator=";")
-        df = df.sort(["Semana", "Plantel", "DOCENTE"])
+        archivo_excel = "Datos1.xlsx"
+        xls = pd.ExcelFile(archivo_excel)
+        hojas_disponibles = xls.sheet_names
+
+        if "Datos" not in hojas_disponibles:
+            st.error("La hoja 'Datos' no fue encontrada en el archivo.")
+            return None
+
+        df_pandas_datos = pd.read_excel(archivo_excel, sheet_name="Datos")
+        df = pl.from_pandas(df_pandas_datos).sort(["Semana", "Plantel", "DOCENTE"])
         return df
     except Exception as e:
         st.error(f"Error al cargar los datos: {e}")
@@ -44,93 +28,166 @@ def cargar_datos():
 df = cargar_datos()
 
 if df is None or not all(col in df.columns for col in ["Semana", "Plantel", "DOCENTE", "MODULO", "COMPETENTES", "NO COMPETENTES", "TOTAL ALUMNOS"]):
-    st.warning("No se encontraron algunas columnas clave. Revisa el archivo CSV.")
+    st.warning("No se encontraron algunas columnas clave. Revisa el archivo Excel.")
     st.stop()
 
-# Menú Principal sin "Competentes"
-opcion = st.sidebar.selectbox("📌 Menú Principal", ["No Competentes", "Comportamiento Semanal de Docentes"])
+if "logueado" not in st.session_state:
+    st.session_state.logueado = False
+    st.session_state.plantel_usuario = None
+    st.session_state.administrador = False
 
-### 📊 OPCIÓN 1: NO COMPETENTES
-if opcion == "No Competentes":
-    st.title("📉 Datos de Docentes NO Competentes")
+if not st.session_state.logueado:
+    st.sidebar.title("🔒 Inicio de sesión")
+    usuario = st.sidebar.text_input("Usuario")
+    contrasena = st.sidebar.text_input("Contraseña", type="password")
+    login_btn = st.sidebar.button("Iniciar sesión")
 
-    semana_seleccionada = st.selectbox("📅 Selecciona una semana", sorted(df["Semana"].unique()))
-    plantel_seleccionado = st.selectbox("🏫 Selecciona un plantel", sorted(df["Plantel"].unique()))
-    df_filtrado = df.filter((df["Semana"] == semana_seleccionada) & (df["Plantel"] == plantel_seleccionado))
+    @st.cache_data(ttl=600)
+    def validar_usuario(user, password):
+        if user.lower() == "admin" and password == "admin":
+            return True, "ADMIN"
+        try:
+            archivo_excel = "Datos1.xlsx"
+            xls = pd.ExcelFile(archivo_excel)
+            hojas_disponibles = xls.sheet_names
 
-    # 📊 Ranking de Docentes NO Competentes - TOP 15
-    st.subheader("📊 Ranking de Docentes NO Competentes - TOP 15")
-    ranking_docentes_no = df_filtrado.group_by("DOCENTE").agg(pl.sum("NO COMPETENTES"), pl.sum("TOTAL ALUMNOS")).sort("NO COMPETENTES", descending=True).head(15)
+            if "Planteles" not in hojas_disponibles:
+                st.error("La hoja 'Planteles' no existe en el archivo Excel.")
+                return False, None
 
-    fig, ax = plt.subplots(figsize=(10, 5))
-    bars = ax.barh(ranking_docentes_no["DOCENTE"], ranking_docentes_no["NO COMPETENTES"], color="red")
+            df_pandas_planteles = pd.read_excel(archivo_excel, sheet_name="Planteles")
+            planteles = pl.from_pandas(df_pandas_planteles)
 
-    ax.invert_yaxis()  # Ordenar de mayor a menor
+            usuario_filtrado = planteles.filter(
+                (planteles["Usuario"].str.strip_chars() == user) & (planteles["Contrasena"].str.strip_chars() == password)
+            )
 
-    # Etiquetas en las barras
-    for bar, estudiantes, total in zip(bars, ranking_docentes_no["NO COMPETENTES"], ranking_docentes_no["TOTAL ALUMNOS"]):
-        porcentaje = (estudiantes / total) * 100
-        ax.text(bar.get_width() - 3, bar.get_y() + bar.get_height()/2, f"{estudiantes} - {porcentaje:.1f}%",  
-                ha='right', va='center', fontsize=10, color="white", fontweight="bold")
+            if usuario_filtrado.is_empty():
+                return False, None
+            return True, usuario_filtrado["Plantel"][0]
+        except Exception as e:
+            st.error(f"Error en la autenticación: {e}")
+            return False, None
 
-    ax.set_xlabel("Total de Estudiantes NO Competentes - % de No Competencia")
-    ax.set_ylabel("Docentes")
-    ax.set_title(f"Cantidad y porcentaje de estudiantes reprobados por los 15 docentes con mayor número de reprobaciones - Semana {semana_seleccionada}")
-    st.pyplot(fig)
+    if login_btn:
+        acceso, plantel_usuario = validar_usuario(usuario, contrasena)
+        if acceso:
+            st.session_state.logueado = True
+            st.session_state.plantel_usuario = plantel_usuario
+            st.session_state.administrador = (usuario.lower() == "admin")
+            st.sidebar.success(f"Bienvenido, {'ADMINISTRADOR' if st.session_state.administrador else usuario}")
+        else:
+            st.sidebar.error("Acceso denegado. Verifica tu usuario y contraseña.")
 
-    # 📊 Ranking de Módulos con más estudiantes NO Competentes - TOP 15
-    st.subheader("📌 Ranking de Módulos con más Estudiantes NO Competentes - TOP 15")
+if st.session_state.logueado:
+    if st.sidebar.button("Cerrar sesión"):
+        st.session_state.logueado = False
+        st.session_state.plantel_usuario = None
+        st.session_state.administrador = False
+        st.rerun()
 
-    ranking_modulos = df_filtrado.group_by("MODULO").agg(pl.sum("NO COMPETENTES"), pl.sum("TOTAL ALUMNOS")).sort("NO COMPETENTES", descending=True).head(15)
+    opcion = st.sidebar.selectbox("📌 Menú Principal", [
+        "No Competentes",
+        "Comportamiento Semanal de Docentes",
+        "Módulos Críticos y Recomendaciones"
+    ])
 
-    fig, ax = plt.subplots(figsize=(10, 5))
-    bars = ax.barh(ranking_modulos["MODULO"], ranking_modulos["NO COMPETENTES"], color="darkred", edgecolor="black", alpha=0.7)
+    def graficar_barras(df_plot, etiqueta):
+        fig, ax = plt.subplots(figsize=(10, max(4, len(df_plot)*0.5)))
+        bars = ax.barh(df_plot[etiqueta], df_plot["NO_COMP"], color="crimson")
+        ax.invert_yaxis()
+        for bar, nc, total in zip(bars, df_plot["NO_COMP"], df_plot["TOTAL"]):
+            pct = (nc / total) * 100 if total > 0 else 0
+            ax.text(bar.get_width() + 1, bar.get_y() + bar.get_height()/2, f"{nc} - {pct:.1f}%", 
+                    ha='left', va='center', fontsize=9, color="black", fontweight="bold")
+        ax.set_xlabel("Alumnos No Competentes")
+        st.pyplot(fig)
 
-    ax.invert_yaxis()  # Ordenar de mayor a menor
+    if opcion == "No Competentes":
+        st.subheader("📉 Top 15 Docentes y Módulos con Mayor Porcentaje de No Competencia")
+        semana_seleccionada = st.selectbox("📅 Selecciona una semana", sorted(df["Semana"].unique()))
+        plantel_seleccionado = st.selectbox("🏫 Selecciona un plantel", sorted(df["Plantel"].unique())) if st.session_state.administrador else st.session_state.plantel_usuario
+        df_filtrado = df.filter((df["Semana"] == semana_seleccionada) & (df["Plantel"] == plantel_seleccionado))
 
-    # Etiquetas en las barras
-    for bar, estudiantes, total in zip(bars, ranking_modulos["NO COMPETENTES"], ranking_modulos["TOTAL ALUMNOS"]):
-        porcentaje = (estudiantes / total) * 100
-        ax.text(bar.get_width() - 3, bar.get_y() + bar.get_height()/2, f"{estudiantes} - {porcentaje:.1f}%",  
-                ha='right', va='center', fontsize=10, color="white", fontweight="bold")
+        # Procesamiento de Docentes (sin filtro de porcentaje mínimo)
+        docentes = df_filtrado.group_by("DOCENTE").agg(
+            pl.sum("NO COMPETENTES").alias("NO_COMP"),
+            pl.sum("TOTAL ALUMNOS").alias("TOTAL")
+        ).with_columns((pl.col("NO_COMP") / pl.col("TOTAL") * 100).alias("PORCENTAJE"))
+        docentes = docentes.sort("PORCENTAJE", descending=True).head(20)
 
-    ax.set_xlabel("Total de Estudiantes NO Competentes - % de No Competencia")
-    ax.set_ylabel("Módulo")
-    ax.set_title(f"Cantidad y porcentaje de estudiantes reprobados en los 15 módulos con mayor número de reprobaciones - Semana {semana_seleccionada}")
-    st.pyplot(fig)
+        # Procesamiento de Módulos (sin filtro de porcentaje mínimo)
+        modulos = df_filtrado.group_by("MODULO").agg(
+            pl.sum("NO COMPETENTES").alias("NO_COMP"),
+            pl.sum("TOTAL ALUMNOS").alias("TOTAL")
+        ).with_columns((pl.col("NO_COMP") / pl.col("TOTAL") * 100).alias("PORCENTAJE"))
+        modulos = modulos.sort("PORCENTAJE", descending=True).head(20)
 
-### 📊 OPCIÓN 2: COMPORTAMIENTO SEMANAL DE DOCENTES
-elif opcion == "Comportamiento Semanal de Docentes":
-    st.title("📊 Evolución Semanal de Docentes")
+        # Gráfica de Docentes
+        st.markdown("### 👨‍🏫 Top 15 Docentes con Mayor Porcentaje de No Competencia")
+        if not docentes.is_empty():
+           graficar_barras(docentes, "DOCENTE")
+        else:
+            st.info("No hay docentes en el top 15 de no competencia.")
 
-    plantel_seleccionado = st.selectbox("🏫 Selecciona un plantel", sorted(df["Plantel"].unique()))
-    docentes_disponibles = df.filter(df["Plantel"] == plantel_seleccionado)["DOCENTE"].unique()
-    docente_seleccionado = st.selectbox("👨‍🏫 Selecciona un docente", sorted(docentes_disponibles))
+        # Gráfica de Módulos
+        st.markdown("### 📚 Top 15 Módulos con Mayor Porcentaje de No Competencia")
+        if not modulos.is_empty():
+            graficar_barras(modulos, "MODULO")
+        else:
+            st.info("No hay módulos en el top 15 de no competencia.")
 
-    df_filtrado = df.filter((df["Plantel"] == plantel_seleccionado) & (df["DOCENTE"] == docente_seleccionado))
-    df_agrupado = df_filtrado.group_by("Semana").agg(pl.sum("NO COMPETENTES"), pl.sum("TOTAL ALUMNOS"))
+    elif opcion == "Comportamiento Semanal de Docentes":
+        st.subheader("📈 Evolución Semanal del Desempeño Docente")
+        plantel_seleccionado = st.selectbox("🏫 Selecciona un plantel", sorted(df["Plantel"].unique())) if st.session_state.administrador else st.session_state.plantel_usuario
+        docentes = df.filter(df["Plantel"] == plantel_seleccionado)["DOCENTE"].unique().to_list()
+        docente_seleccionado = st.selectbox("👨‍🏫 Selecciona un docente", sorted(docentes))
 
-    st.subheader(f"📊 Evolución de Estudiantes NO Competentes para {docente_seleccionado}")
+        df_docente = df.filter((df["Plantel"] == plantel_seleccionado) & (df["DOCENTE"] == docente_seleccionado))
+        df_agrupado = df_docente.group_by("Semana").agg(
+            pl.sum("NO COMPETENTES").alias("NC"),
+            pl.sum("TOTAL ALUMNOS").alias("TA")
+        ).sort("Semana")
 
-    fig, ax = plt.subplots(figsize=(10, 5))
+        semanas = df_agrupado["Semana"]
+        nc = df_agrupado["NC"]
+        ta = df_agrupado["TA"]
+        porcentajes = [f"{(n / t * 100):.1f}%" if t > 0 else "0%" for n, t in zip(nc, ta)]
 
-    valores = df_agrupado["NO COMPETENTES"]
-    max_valor = valores.max()
-    min_valor = valores.min()
+        fig, ax = plt.subplots(figsize=(10, 5))
+        bars = ax.bar(semanas, nc, color="orange", edgecolor="black")
+        for i, bar in enumerate(bars):
+            ax.text(bar.get_x() + bar.get_width()/2, bar.get_height(), f"{nc[i]} - {porcentajes[i]}", ha='center', va='bottom')
+        st.pyplot(fig)
 
-    colores = ["red" if val == max_valor else "green" if val == min_valor else "orange" for val in valores]
+        st.markdown("### 📘 Módulos asignados al docente")
+        df_modulos = df_docente.select(["MODULO"]).unique()
+        st.dataframe(df_modulos.to_pandas(), use_container_width=True)
 
-    bars = ax.bar(df_agrupado["Semana"], valores, color=colores, edgecolor="black", alpha=0.7)
+    elif opcion == "Módulos Críticos y Recomendaciones":
+        st.subheader("🚩 Módulos Críticos por Semana y Docente")
+        plantel_seleccionado = st.selectbox("🏫 Selecciona un plantel", sorted(df["Plantel"].unique())) if st.session_state.administrador else st.session_state.plantel_usuario
+        df_plantel = df.filter(pl.col("Plantel") == plantel_seleccionado)
 
-    # Etiquetas con total y porcentaje
-    for bar, estudiantes, total in zip(bars, valores, df_agrupado["TOTAL ALUMNOS"]):
-        porcentaje = (estudiantes / total) * 100
-        ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() - 5, f"{estudiantes} - {porcentaje:.1f}%",
-                ha="center", fontsize=10, color="white", fontweight="bold")
+        modulos_criticos = df_plantel.group_by(["Semana", "MODULO", "DOCENTE"]).agg(
+            pl.sum("NO COMPETENTES").alias("NO_COMP"),
+            pl.sum("TOTAL ALUMNOS").alias("TOTAL")
+        ).with_columns((pl.col("NO_COMP") / pl.col("TOTAL") * 100).alias("PORCENTAJE"))
+        modulos_criticos = modulos_criticos.filter(pl.col("PORCENTAJE") >= 20).sort(["Semana", "PORCENTAJE"], descending=True)
 
-    ax.set_xlabel("Semana")
-    ax.set_ylabel("Total Estudiantes NO Competentes - % de No Competencia")
-    ax.set_title(f"Evolución Semanal - {docente_seleccionado}")
-
-    st.pyplot(fig)
-
+        if not modulos_criticos.is_empty():
+            st.dataframe(modulos_criticos.to_pandas(), use_container_width=True)
+            def to_excel(df_pandas):
+                output = io.BytesIO()
+                with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+                    df_pandas.to_excel(writer, index=False)
+                return output.getvalue()
+            excel_data = to_excel(modulos_criticos.to_pandas())
+            st.download_button(
+                label="📥 Descargar reporte de módulos críticos",
+                data=excel_data,
+                file_name="modulos_criticos.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+        else:
+            st.info("No hay módulos críticos en el plantel seleccionado.")
